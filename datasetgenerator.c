@@ -30,18 +30,17 @@ int compare(const void* a, const void* b) {
 }
 
 // Function to generate the dataset
-void generate_dataset(const char* filename, size_t num_rows, int partially_sorted) {
+void generate_challenging_dataset(const char* filename, size_t num_rows, int partially_sorted, int dataset_type) {
     FILE* file = fopen(filename, "w");
     if (!file) {
         perror("Failed to open file");
         exit(EXIT_FAILURE);
     }
 
-    // Write CSV header
     fprintf(file, "date,location,value,transaction_count\n");
 
-    char date[11];         // Buffer to hold generated date
-    char random_string[MAX_STRING_LENGTH + 1]; // Buffer for random string
+    char date[11];
+    char random_string[MAX_STRING_LENGTH + 1];
     double* values = NULL;
 
     if (partially_sorted) {
@@ -58,10 +57,38 @@ void generate_dataset(const char* filename, size_t num_rows, int partially_sorte
             printf("Progress: %.0f%%\n", (double)i / num_rows * 100);
         }
 
-        generate_random_date(date);
-        generate_random_string(random_string, MAX_STRING_LENGTH);
-        double value = ((double)rand() / RAND_MAX) * 10000.0;  // Random double value between 0 and 10000
-        int transaction_count = rand() % 100 + 1;              // Random integer between 1 and 100
+        // Primary Key: Date
+        if (i % 10 == 0) {
+            strcpy(date, "2024-01-01"); // Identical primary key
+        } else {
+            generate_random_date(date);
+        }
+
+        // Secondary Key: Random String
+        if (rand() % 2 == 0) {
+            sprintf(random_string, "prefix_%d", rand() % 1000); // Common prefix
+        } else {
+            generate_random_string(random_string, rand() % MAX_STRING_LENGTH + 1);
+        }
+
+        // Value Distribution Based on Dataset Type
+        double value;
+        if (dataset_type == 1) { // Fully sorted
+            value = i;
+        } else if (dataset_type == 2) { // Reverse sorted
+            value = num_rows - i;
+        } else if (dataset_type == 3) { // Nearly sorted with noise
+            value = (i % 10 == 0) ? ((double)rand() / RAND_MAX) * 10000.0 : i;
+        } else if (dataset_type == 4) { // Heavy duplication
+            value = (i < num_rows * 0.8) ? 42.0 : ((double)rand() / RAND_MAX) * 10000.0;
+        } else if (dataset_type == 5) { // Clustered values
+            value = (i < num_rows * 0.9) ? rand() % 100 : 10000 + rand() % 100;
+        } else {
+            value = ((double)rand() / RAND_MAX) * 10000.0; // Default random values
+        }
+
+        // Transaction Count
+        int transaction_count = (rand() % 2 == 0) ? i % 100 : rand() % 100;
 
         if (partially_sorted) {
             values[i] = value;
@@ -70,20 +97,17 @@ void generate_dataset(const char* filename, size_t num_rows, int partially_sorte
         }
     }
 
-
     if (partially_sorted) {
         printf("Sorting partially sorted dataset...\n");
         size_t half = num_rows / 2;
         qsort(values, half, sizeof(double), compare);
 
-        // Write the partially sorted dataset to the file
         for (size_t i = 0; i < num_rows; i++) {
             generate_random_date(date);
             generate_random_string(random_string, MAX_STRING_LENGTH);
-            int transaction_count = rand() % 100 + 1;  // Random integer between 1 and 100
-            fprintf(file, "%s,%s,%.2f,%d\n", date, random_string, values[i], transaction_count);
+            int transaction_count = rand() % 100 + 1;  // Generate transaction count
+            fprintf(file, "%s,%s,%.2f,%d\n", date, random_string, values[i % half], transaction_count);
         }
-
 
         free(values);
     }
@@ -96,30 +120,20 @@ int main() {
     // Seed the random number generator
     srand(time(NULL));
 
-    printf("Generating dataset with 10k rows...\n");
-    generate_dataset("datasets/dataset_10k.csv", 10000, 0);
+    printf("Generating fully sorted dataset with 1 million rows...\n");
+    generate_challenging_dataset("datasets/dataset_1m_sorted.csv", 1000000, 0, 1);
 
-    printf("Generating dataset with 100k rows...\n");
-    generate_dataset("datasets/dataset_100k.csv", 100000, 0);
+    printf("Generating reverse sorted dataset with 1 million rows...\n");
+    generate_challenging_dataset("datasets/dataset_1m_reverse_sorted.csv", 1000000, 0, 2);
 
-    printf("Generating dataset with 500k rows...\n");
-    generate_dataset("datasets/dataset_500k.csv", 500000, 0);
+    printf("Generating nearly sorted dataset with 1 million rows...\n");
+    generate_challenging_dataset("datasets/dataset_1m_nearly_sorted.csv", 1000000, 0, 3);
 
-    // Generate a dataset with 1 million rows
-    printf("Generating dataset with 1 million rows...\n");
-    generate_dataset("datasets/dataset_1m.csv", 1000000, 0);
+    printf("Generating dataset with heavy duplication and 1 million rows...\n");
+    generate_challenging_dataset("datasets/dataset_1m_duplicated.csv", 1000000, 0, 4);
 
-    // Generate a dataset with 10 million rows
-    printf("Generating dataset with 10 million rows...\n");
-    generate_dataset("datasets/dataset_10m.csv", 10000000, 0);
-
-    // Generate a partially sorted dataset with 1 million rows
-    printf("Generating partially sorted dataset with 1 million rows...\n");
-    generate_dataset("datasets/dataset_1m_sorted.csv", 1000000, 1);
-
-    // Generate a partially sorted dataset with 10 million rows
-    printf("Generating partially sorted dataset with 10 million rows...\n");
-    generate_dataset("datasets/dataset_10m_sorted.csv", 10000000, 1);
+    printf("Generating clustered dataset with 1 million rows...\n");
+    generate_challenging_dataset("datasets/dataset_1m_clustered.csv", 1000000, 0, 5);
 
     printf("Datasets generated successfully.\n");
     return 0;
