@@ -1,6 +1,8 @@
 #ifndef DATASET_H
 #define DATASET_H
 
+#include <stddef.h>
+
 typedef struct {
     char date[20];
     char location[100];

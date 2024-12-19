@@ -6,6 +6,12 @@
 #include "algorithms/quicksort.h"
 #include "algorithms/mergesort.h"
 #include "algorithms/radixsort.h"
+#include "algorithms/timsort.h"
+#include "algorithms/insertionsort.h"
+#include "algorithms/shellsort.h"
+#include "algorithms/hybridquicksort.h"
+#include "algorithms/countingsort.h"
+#include "algorithms/bubblesort.h"
 
 typedef struct {
     char datasetName[32];
