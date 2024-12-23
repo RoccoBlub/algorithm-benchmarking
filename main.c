@@ -6,22 +6,19 @@
 #include "dataset.h"
 #include "benchmark.h"
 #include "comparators.h"
+#include "logging.h"
 
 #define INITIAL_CAPACITY 100
 
 typedef struct {
     Dataset1Row *dataset;
     size_t rows;
-    Comparator *comparisons;
-    const char **descriptions;
-    const char **sortTypes;
-    size_t descriptionCount;
-    size_t sortTypeCount;
+    Comparator comparison;
+    const char *sortType;
     const char *datasetName;
     BenchmarkResult *results;
     size_t *resultIndex;
-    size_t *progressCounter;  // Shared progress counter
-    size_t totalTasks;        // Total number of tasks
+    size_t datasetIndex;
     pthread_mutex_t *mutex;
 } ThreadArgs;
 
@@ -30,127 +27,79 @@ const char *formatTime(double time) {
     if (time < 0) {
         return "Skipped";
     }
-    snprintf(buffer, sizeof(buffer), "%.2f", time);
+    snprintf(buffer, sizeof(buffer), "%.2f ms", time);
     return buffer;
 }
 
-void displayResults(BenchmarkResult results[], int count) {
-    printf("+-----------------+-------------+----------------+----------------+------------------+\n");
-    printf("| Algorithm       | Dataset     | Integer (Time) | Strings (Time) | Composite (Time) |\n");
-    printf("+-----------------+-------------+----------------+----------------+------------------+\n");
+void displayResults(BenchmarkResult results[], size_t resultCount, const char *sortTypes[], size_t sortTypeCount, const char *datasets[], size_t datasetCount) {
+    logMessage("+-----------------+-------------------+----------------+\n");
+    logMessage("| Algorithm       | Dataset           | Time taken (ms)|\n");
+    logMessage("+-----------------+-------------------+----------------+\n");
 
-    bool processed[count];
-    for (int i = 0; i < count; i++) {
-        processed[i] = false;
-    }
-
-    for (int i = 0; i < count; i++) {
-        if (processed[i]) continue;
-
-        double timeByValue = -1.0, timeByLocation = -1.0, timeByComposite = -1.0;
-
-        for (int j = 0; j < count; j++) {
-            if (!processed[j] &&
-                strcmp(results[i].datasetName, results[j].datasetName) == 0 &&
-                strcmp(results[i].sortType, results[j].sortType) == 0) {
-
-                if (strcmp(results[j].description, "Sorting by Value") == 0) {
-                    timeByValue = results[j].timeTaken;
-                }
-                if (strcmp(results[j].description, "Sorting by Location") == 0) {
-                    timeByLocation = results[j].timeTaken;
-                }
-                if (strcmp(results[j].description, "Sorting by Composite") == 0) {
-                    timeByComposite = results[j].timeTaken;
-                }
-
-                processed[j] = true;
-                }
+    for (size_t datasetIdx = 0; datasetIdx < datasetCount; datasetIdx++) {
+        const char *datasetName = datasets[datasetIdx];
+        // Extract the descriptive part of the dataset name
+        const char *shortName = strrchr(datasetName, '/'); // Find the last '/' character
+        if (shortName) {
+            shortName++; // Move past '/'
+        } else {
+            shortName = datasetName; // Use the full name if no '/'
         }
 
-        processed[i] = true;
+        // Remove the file extension (".csv")
+        char formattedName[50];
+        snprintf(formattedName, sizeof(formattedName), "%.*s", (int)(strrchr(shortName, '.') - shortName), shortName);
 
-        printf("| %-15s | %-11s | %-14s | %-14s | %-16s |\n",
-               results[i].sortType,
-               results[i].datasetName,
-               (timeByValue >= 0) ? formatTime(timeByValue) : "-",
-               (timeByLocation >= 0) ? formatTime(timeByLocation) : "-",
-               (timeByComposite >= 0) ? formatTime(timeByComposite) : "-");
+        for (size_t sortIdx = 0; sortIdx < sortTypeCount; sortIdx++) {
+            double timeTaken = -1.0;
+
+            for (size_t i = 0; i < resultCount; i++) {
+                if (strcmp(results[i].sortType, sortTypes[sortIdx]) == 0 &&
+                    strcmp(results[i].datasetName, datasetName) == 0) {
+                    timeTaken = results[i].timeTaken;
+                    break;
+                    }
+            }
+
+            logMessage("| %-15s | %-17s | %-14s |\n",
+                       sortTypes[sortIdx],
+                       formattedName,
+                       (timeTaken >= 0) ? formatTime(timeTaken) : "-");
+        }
+        logMessage("+-----------------+-------------------+----------------+\n");
     }
-
-    printf("+-----------------+-------------+----------------+----------------+------------------+\n");
 }
 
-void displayProgressBar(size_t current, size_t total) {
-    int barWidth = 50;
-    double progress = (double)current / total;
-
-    printf("\r[");
-    int pos = barWidth * progress;
-    for (int i = 0; i < barWidth; ++i) {
-        if (i < pos) printf("=");
-        else if (i == pos) printf(">");
-        else printf(" ");
-    }
-    printf("] %d%%", (int)(progress * 100));
-    fflush(stdout);
-}
 
 void *benchmarkDataset(void *arg) {
     ThreadArgs *args = (ThreadArgs *)arg;
 
-    for (size_t j = 0; j < args->descriptionCount; j++) {
-        for (size_t k = 0; k < args->sortTypeCount; k++) {
-            BenchmarkResult result;
-            benchmark(args->dataset, args->rows, args->comparisons[j],
-                      args->descriptions[j], args->sortTypes[k],
-                      args->datasetName, &result);
+    logMessage("Thread started for Dataset: %s, Algorithm: %s\n", args->datasetName, args->sortType);
 
-            pthread_mutex_lock(args->mutex);
-            size_t idx = (*args->resultIndex)++;
-            args->results[idx] = result;
+    BenchmarkResult result;
+    benchmark(args->dataset, args->rows, args->comparison, "Sorting by Value", args->sortType, args->datasetName, &result);
 
-            (*args->progressCounter)++;
-            displayProgressBar(*args->progressCounter, args->totalTasks);
-            pthread_mutex_unlock(args->mutex);
-        }
-    }
+    pthread_mutex_lock(args->mutex);
+    size_t idx = (*args->resultIndex)++;
+    args->results[idx] = result;
+    pthread_mutex_unlock(args->mutex);
 
-    free(args->dataset);
     free(args);
-
     return NULL;
 }
 
 int main() {
-    const char *filenames[] = {
-//        "datasets/dataset_10k.csv",
-        "datasets/dataset_100k.csv",
-//        "datasets/dataset_500k.csv",
-//        "datasets/dataset_1m.csv",
-//        "datasets/dataset_1m_sorted.csv",
-//        "datasets/dataset_10m.csv",
-//        "datasets/dataset_10m_sorted.csv",
+    const char *numericDatasets[] = {
+        "datasets/sorted.csv",
+        "datasets/reverse_sorted.csv",
+        "datasets/nearly_sorted.csv",
+        "datasets/heavy_duplication.csv"
     };
 
-    const char *descriptions[] = {
-        "Sorting by Value",
-        "Sorting by Location",
-        "Sorting by Composite"
-    };
-
-    Comparator comparisons[] = {
-        compareNumeric,
-        compareString,
-        compareComposite
-    };
-
-    const char *sortTypes[] = {"HeapSort", "QuickSort", "MergeSort", "RadixSort", "TimSort", "ShellSort", "HybridQuickSort", "CountingSort", "InsertionSort", "BubbleSort"};
-
-    size_t datasetCount = sizeof(filenames) / sizeof(filenames[0]);
-    size_t descriptionCount = sizeof(descriptions) / sizeof(descriptions[0]);
+    const char *sortTypes[] = {"HeapSort", "Qsort", "MergeSort", "RadixSort", "TimSort", "CountingSort"};
+    size_t datasetCount = sizeof(numericDatasets) / sizeof(numericDatasets[0]);
     size_t sortTypeCount = sizeof(sortTypes) / sizeof(sortTypes[0]);
-    size_t totalResults = datasetCount * descriptionCount * sortTypeCount;
+    size_t totalResults = datasetCount * sortTypeCount;
 
     BenchmarkResult *results = (BenchmarkResult *)malloc(totalResults * sizeof(BenchmarkResult));
     if (!results) {
@@ -158,15 +107,13 @@ int main() {
         return 1;
     }
 
-    pthread_t threads[datasetCount];
-    size_t resultIndex = 0;
-    size_t progressCounter = 0;
+    pthread_t threads[totalResults];
     pthread_mutex_t mutex;
     pthread_mutex_init(&mutex, NULL);
 
-    size_t totalTasks = datasetCount * descriptionCount * sortTypeCount;
+    size_t resultIndex = 0;
 
-    for (size_t i = 0; i < datasetCount; i++) {
+    for (size_t datasetIdx = 0; datasetIdx < datasetCount; datasetIdx++) {
         size_t capacity = INITIAL_CAPACITY;
         Dataset1Row *dataset = (Dataset1Row *)malloc(capacity * sizeof(Dataset1Row));
         if (!dataset) {
@@ -176,57 +123,53 @@ int main() {
             return 1;
         }
 
-        size_t rows = parseCSV(filenames[i], processLineDataset1, &dataset, &capacity, sizeof(Dataset1Row));
-        if (rows < 0) {
-            fprintf(stderr, "Failed to process file: %s\n", filenames[i]);
+        size_t rows = parseCSV(numericDatasets[datasetIdx], processLineDataset1, &dataset, &capacity, sizeof(Dataset1Row));
+        if (rows <= 0) {
+            fprintf(stderr, "Dataset %s failed to parse or is empty.\n", numericDatasets[datasetIdx]);
             free(dataset);
             continue;
         }
+        logMessage("Dataset %s parsed successfully with %zu rows.\n", numericDatasets[datasetIdx], rows);
 
-        ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
-        if (!args) {
-            perror("Failed to allocate thread arguments");
-            free(dataset);
-            free(results);
-            pthread_mutex_destroy(&mutex);
-            return 1;
-        }
+        for (size_t sortIdx = 0; sortIdx < sortTypeCount; sortIdx++) {
+            ThreadArgs *args = (ThreadArgs *)malloc(sizeof(ThreadArgs));
+            if (!args) {
+                perror("Failed to allocate thread arguments");
+                free(dataset);
+                free(results);
+                pthread_mutex_destroy(&mutex);
+                return 1;
+            }
 
-        char datasetName[100];
-        sprintf(datasetName, "Dataset %ld", i + 1);
+            args->dataset = dataset;
+            args->rows = rows;
+            args->comparison = compareNumeric;
+            args->sortType = sortTypes[sortIdx];
+            args->datasetName = numericDatasets[datasetIdx];
+            args->results = results;
+            args->resultIndex = &resultIndex;
+            args->datasetIndex = datasetIdx;
+            args->mutex = &mutex;
 
-        args->dataset = dataset;
-        args->rows = rows;
-        args->comparisons = comparisons;
-        args->descriptions = descriptions;
-        args->sortTypes = sortTypes;
-        args->descriptionCount = descriptionCount;
-        args->sortTypeCount = sortTypeCount;
-        args->datasetName = datasetName;
-        args->results = results;
-        args->resultIndex = &resultIndex;
-        args->progressCounter = &progressCounter;
-        args->totalTasks = totalTasks;
-        args->mutex = &mutex;
-
-        if (pthread_create(&threads[i], NULL, benchmarkDataset, args) != 0) {
-            perror("Failed to create thread");
-            free(dataset);
-            free(args);
-            free(results);
-            pthread_mutex_destroy(&mutex);
-            return 1;
+            if (pthread_create(&threads[datasetIdx * sortTypeCount + sortIdx], NULL, benchmarkDataset, args) != 0) {
+                perror("Failed to create thread");
+                free(dataset);
+                free(args);
+                free(results);
+                pthread_mutex_destroy(&mutex);
+                return 1;
+            }
         }
     }
 
-    for (size_t i = 0; i < datasetCount; i++) {
+    for (size_t i = 0; i < totalResults; i++) {
         pthread_join(threads[i], NULL);
     }
 
     pthread_mutex_destroy(&mutex);
 
-    printf("\nBenchmarking completed.\n");
-    displayResults(results, resultIndex);
+    logMessage("\nBenchmarking completed.\n");
+    displayResults(results, resultIndex, sortTypes, sortTypeCount, numericDatasets, datasetCount);
 
     free(results);
     return 0;

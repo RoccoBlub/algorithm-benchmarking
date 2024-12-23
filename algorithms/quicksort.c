@@ -26,10 +26,31 @@ size_t partition(Dataset1Row *base, size_t low, size_t high, Comparator comparat
     return i + 1;
 }
 
+
+size_t randomPartition(Dataset1Row *base, size_t low, size_t high, Comparator comparator) {
+    size_t randomIndex = low + rand() % (high - low + 1);
+    swap(&base[randomIndex], &base[high]); // Move random element to the end
+    return partition(base, low, high, comparator);
+}
+
+size_t medianOfThreePartition(Dataset1Row *base, size_t low, size_t high, Comparator comparator) {
+    size_t mid = low + (high - low) / 2;
+
+    // Find the median of base[low], base[mid], base[high]
+    if (comparator(&base[low], &base[mid]) > 0) swap(&base[low], &base[mid]);
+    if (comparator(&base[low], &base[high]) > 0) swap(&base[low], &base[high]);
+    if (comparator(&base[mid], &base[high]) > 0) swap(&base[mid], &base[high]);
+
+    // Move the median to the end
+    swap(&base[mid], &base[high]);
+    return partition(base, low, high, comparator);
+}
+
+
 // Recursive quicksort function
 void quickSortHelper(Dataset1Row *base, size_t low, size_t high, Comparator comparator) {
     if (low < high) {
-        size_t pi = partition(base, low, high, comparator);
+        size_t pi = randomPartition(base, low, high, comparator);
 
         if (pi > 0) { // Ensure no underflow for size_t
             quickSortHelper(base, low, pi - 1, comparator);

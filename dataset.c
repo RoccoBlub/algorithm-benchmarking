@@ -40,31 +40,44 @@ int parseCSV(const char *filename, LineProcessor processor, Dataset1Row **data, 
         bytesRead += strlen(line);
 
         if (rowIndex >= *capacity) {
-            *capacity *= 2;
-            void *newData = realloc(*data, *capacity * elemSize);
+            size_t newCapacity = *capacity * 2;
+            void *newData = realloc(*data, newCapacity * elemSize);
             if (!newData) {
                 perror("Memory reallocation failed");
                 fclose(file);
                 return -1;
             }
             *data = newData;
+            *capacity = newCapacity;
         }
 
-        processor(line, *data, rowIndex);
+        if (processor) {
+            processor(line, *data, rowIndex);
+        }
         rowIndex++;
 
         if (rowIndex % 1000 == 0) {
-            printf("\rProcessing %s: %.2f%% complete", filename, (double)bytesRead / fileSize * 100);
+            logMessage("\rProcessing %s: %.2f%% complete", filename, (double)bytesRead / fileSize * 100);
             fflush(stdout);
         }
     }
 
-    printf("\rProcessing %s: 100.00%% complete\n", filename);
+    logMessage("\rProcessing %s: 100.00%% complete\n", filename);
     fclose(file);
     return rowIndex;
 }
 
 void processLineDataset1(const char *line, Dataset1Row *data, int rowIndex) {
+    if (!line || !data) {
+        fprintf(stderr, "Invalid line or data passed to processLineDataset1\n");
+        return;
+    }
+
+    if (rowIndex < 0) {
+        fprintf(stderr, "Invalid rowIndex in processLineDataset1\n");
+        return;
+    }
+
     sscanf(line, "%19[^,],%99[^,],%lf,%d",
            data[rowIndex].date,
            data[rowIndex].location,

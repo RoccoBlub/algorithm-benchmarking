@@ -2,6 +2,7 @@
 #define DATASET_H
 
 #include <stddef.h>
+#include "logging.h"
 
 typedef struct {
     char date[20];

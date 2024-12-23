@@ -12,12 +12,15 @@
 #include "algorithms/hybridquicksort.h"
 #include "algorithms/countingsort.h"
 #include "algorithms/bubblesort.h"
+#include "logging.h"
+
 
 typedef struct {
-    char datasetName[32];
-    char sortType[32];
-    char description[256];
+    char sortType[50];
+    char datasetName[100];
+    char description[100];
     double timeTaken;
+    size_t datasetIndex;
 } BenchmarkResult;
 
 void benchmark(Dataset1Row *data, size_t n, Comparator comparator, const char *description, const char *sortType, const char *datasetName, BenchmarkResult *result);
