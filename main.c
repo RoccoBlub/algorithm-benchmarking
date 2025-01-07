@@ -96,7 +96,7 @@ int main() {
         "datasets/heavy_duplication.csv"
     };
 
-    const char *sortTypes[] = {"HeapSort", "Qsort", "MergeSort", "RadixSort", "TimSort", "CountingSort"};
+    const char *sortTypes[] = {"HeapSort", "Qsort", "MergeSort", "RadixSort", "TimSort", "CountingSort", "QuickSort"};
     size_t datasetCount = sizeof(numericDatasets) / sizeof(numericDatasets[0]);
     size_t sortTypeCount = sizeof(sortTypes) / sizeof(sortTypes[0]);
     size_t totalResults = datasetCount * sortTypeCount;
